@@ -2,74 +2,115 @@ name: Daily Market Reports
 
 on:
   schedule:
-    # All times UTC — US Eastern is UTC-4 (EDT) or UTC-5 (EST)
-    - cron: '0 12 * * 1-5'    # 8:00 AM ET  — Open report
-    - cron: '30 20 * * 1-5'   # 4:30 PM ET  — Close report
-    - cron: '0 21 * * 5'      # 5:00 PM ET  — Weekly recap (Fridays only)
-  workflow_dispatch:           # allow manual trigger from GitHub UI
+    # All times UTC — US Eastern is UTC-4 (EDT) / UTC-5 (EST)
+    - cron: '0 12 * * 1-5'    # 8:00 AM ET  — Open report   (Mon-Fri)
+    - cron: '30 20 * * 1-5'   # 4:30 PM ET  — Close report  (Mon-Fri)
+    - cron: '0 21 * * 5'      # 5:00 PM ET  — Weekly recap  (Friday only)
+  workflow_dispatch:
     inputs:
       report_type:
-        description: 'Report type (open / close / weekly / all)'
+        description: 'Report type: open | close | weekly | all'
         required: true
         default: 'open'
+      report_date:
+        description: 'Date override (YYYY-MM-DD). Leave blank for today.'
+        required: false
+        default: ''
 
 jobs:
   generate:
     runs-on: ubuntu-latest
 
     steps:
+      # -----------------------------------------------------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      # -----------------------------------------------------------------------
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      # -----------------------------------------------------------------------
       - name: Install dependencies
-        run: pip install requests yfinance
+        run: pip install requests yfinance anthropic
 
-      - name: Determine report type from schedule
-        id: report_type
+      # -----------------------------------------------------------------------
+      - name: Determine report type
+        id: ctx
         run: |
           HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
-          DOW=$(date -u +%u)   # 1=Mon … 7=Sun
+          DOW=$(date -u +%u)
           INPUT_TYPE="${{ github.event.inputs.report_type }}"
+          INPUT_DATE="${{ github.event.inputs.report_date }}"
 
+          # Type
           if [[ -n "$INPUT_TYPE" ]]; then
-            echo "type=$INPUT_TYPE" >> $GITHUB_OUTPUT
+            TYPE="$INPUT_TYPE"
           elif [[ "$HOUR" == "12" ]]; then
-            echo "type=open" >> $GITHUB_OUTPUT
+            TYPE="open"
           elif [[ "$HOUR" == "20" ]]; then
-            echo "type=close" >> $GITHUB_OUTPUT
+            TYPE="close"
           elif [[ "$HOUR" == "21" && "$DOW" == "5" ]]; then
-            echo "type=weekly" >> $GITHUB_OUTPUT
+            TYPE="weekly"
           else
-            echo "type=open" >> $GITHUB_OUTPUT
+            TYPE="open"
           fi
 
-      - name: Write .env from secrets
+          # Date
+          if [[ -n "$INPUT_DATE" ]]; then
+            DATE="$INPUT_DATE"
+          else
+            DATE=$(date -u +%Y-%m-%d)
+          fi
+
+          echo "type=$TYPE"  >> $GITHUB_OUTPUT
+          echo "date=$DATE"  >> $GITHUB_OUTPUT
+          echo "Report type: $TYPE | Date: $DATE"
+
+      # -----------------------------------------------------------------------
+      - name: Write .env from GitHub Secrets
         run: |
-          cat > .env <<EOF
+          cat > .env << 'ENVEOF'
           POLYGON_API_KEY=${{ secrets.POLYGON_API_KEY }}
           ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
           FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
           FMP_API_KEY=${{ secrets.FMP_API_KEY }}
           FRED_API_KEY=${{ secrets.FRED_API_KEY }}
-          EOF
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          ENVEOF
 
-      - name: Generate report
+      # -----------------------------------------------------------------------
+      - name: Generate price data (generate_report.py)
         run: |
-          TYPE=${{ steps.report_type.outputs.type }}
-          DATE=$(date -u +%Y-%m-%d)
+          TYPE=${{ steps.ctx.outputs.type }}
+          DATE=${{ steps.ctx.outputs.date }}
           python3 generate_report.py --type "$TYPE" --date "$DATE"
 
-      - name: Commit and push
+      # -----------------------------------------------------------------------
+      - name: Fill narrative sections (fill_narratives.py)
+        run: |
+          TYPE=${{ steps.ctx.outputs.type }}
+          DATE=${{ steps.ctx.outputs.date }}
+
+          FILL_FLAG="--today"
+          [[ "$TYPE" == "weekly" ]] && FILL_FLAG="--weekly"
+          [[ "$TYPE" == "all" ]]    && FILL_FLAG="--all"
+
+          python3 fill_narratives.py $FILL_FLAG --date "$DATE"
+
+      # -----------------------------------------------------------------------
+      - name: Commit and push completed reports
         run: |
           git config user.name  "GlobalMarkets Bot"
           git config user.email "bot@globalmarkets.lucren"
           git add Open/ Close/ Weekly/
-          git diff --cached --quiet || \
-            git commit -m "Auto: ${{ steps.report_type.outputs.type }} report $(date -u +%Y-%m-%d)" && \
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            TYPE=${{ steps.ctx.outputs.type }}
+            DATE=${{ steps.ctx.outputs.date }}
+            git commit -m "Auto: $TYPE report $DATE [price + narrative]"
             git push
+          fi

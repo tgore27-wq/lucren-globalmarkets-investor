@@ -51,6 +51,15 @@ case "$TYPE" in
     ;;
 esac
 
+# Fill narrative sections via Claude API
+FILL_FLAG="--today"
+[[ "$TYPE" == "weekly" ]] && FILL_FLAG="--weekly"
+[[ "$TYPE" == "all" ]]    && FILL_FLAG="--all"
+
+echo "Running fill_narratives.py $FILL_FLAG ..." >> "$LOG"
+$PYTHON fill_narratives.py $FILL_FLAG --date "$DATE" >> "$LOG" 2>&1 || \
+  echo "  [WARN] fill_narratives.py encountered an error — reports saved without narratives." >> "$LOG"
+
 # Stage and commit new/changed report files
 echo "Committing..." >> "$LOG"
 git add Open/ Close/ Weekly/ 2>> "$LOG" || true
