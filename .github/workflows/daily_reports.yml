@@ -2,9 +2,10 @@ name: Daily Market Reports
 
 on:
   schedule:
-    # All times UTC — US Eastern is UTC-4 (EDT) / UTC-5 (EST)
-    - cron: '0 12 * * 1-5'    # 8:00 AM ET  — Open report   (Mon-Fri)
-    - cron: '30 20 * * 1-5'   # 4:30 PM ET  — Close report  (Mon-Fri)
+    # All times UTC — Eastern Daylight Time (EDT) = UTC-4 (summer)
+    # When clocks fall back in Nov (EST = UTC-5), update these +1 hour
+    - cron: '30 13 * * 1-5'   # 9:30 AM ET  — Open report   (Mon-Fri)
+    - cron: '0 20 * * 1-5'    # 4:00 PM ET  — Close report  (Mon-Fri)
     - cron: '0 21 * * 5'      # 5:00 PM ET  — Weekly recap  (Friday only)
   workflow_dispatch:
     inputs:
@@ -48,9 +49,11 @@ jobs:
           # Type
           if [[ -n "$INPUT_TYPE" ]]; then
             TYPE="$INPUT_TYPE"
-          elif [[ "$HOUR" == "12" ]]; then
+          elif [[ "$HOUR" == "13" ]]; then
             TYPE="open"
-          elif [[ "$HOUR" == "20" ]]; then
+          elif [[ "$HOUR" == "20" && "$DOW" != "5" ]]; then
+            TYPE="close"
+          elif [[ "$HOUR" == "20" && "$DOW" == "5" ]]; then
             TYPE="close"
           elif [[ "$HOUR" == "21" && "$DOW" == "5" ]]; then
             TYPE="weekly"

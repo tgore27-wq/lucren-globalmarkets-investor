@@ -23,6 +23,12 @@ echo "=== $(date '+%Y-%m-%d %H:%M:%S') | type=$TYPE ===" >> "$LOG"
 
 cd "$DIR"
 
+# Cron schedule (add via: crontab -e)
+# 30 9  * * 1-5  → 9:30 AM ET open   (Mon-Fri)
+#  0 16 * * 1-5  → 4:00 PM ET close  (Mon-Fri)
+#  0 17 * * 5    → 5:00 PM ET weekly (Friday)
+# Note: update hours by +1 in Nov when EST (UTC-5) kicks in.
+
 # Skip weekends
 DAY=$(date +%u)   # 1=Mon … 7=Sun
 if [[ "$DAY" -ge 6 ]]; then
