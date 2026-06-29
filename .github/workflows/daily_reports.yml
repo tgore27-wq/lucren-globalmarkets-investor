@@ -122,6 +122,22 @@ jobs:
             git push
           fi
 
+      - name: Post report to Discord
+        env:
+          DISCORD_WEBHOOK_OPEN:   ${{ secrets.DISCORD_WEBHOOK_OPEN }}
+          DISCORD_WEBHOOK_CLOSE:  ${{ secrets.DISCORD_WEBHOOK_CLOSE }}
+          DISCORD_WEBHOOK_WEEKLY: ${{ secrets.DISCORD_WEBHOOK_WEEKLY }}
+        run: |
+          TYPE=${{ steps.ctx.outputs.type }}
+          DATE=${{ steps.ctx.outputs.date }}
+          if [[ "$TYPE" == "all" ]]; then
+            python3 post_discord.py --type open   --date "$DATE" || true
+            python3 post_discord.py --type close  --date "$DATE" || true
+            python3 post_discord.py --type weekly --date "$DATE" || true
+          else
+            python3 post_discord.py --type "$TYPE" --date "$DATE" || true
+          fi
+
   # ---------------------------------------------------------------------------
   # Monthly job
   # ---------------------------------------------------------------------------
@@ -193,3 +209,10 @@ print(d.strftime('%Y-%m'))")
             git commit -m "Auto: monthly report $MONTH [price + narrative]"
             git push
           fi
+
+      - name: Post monthly report to Discord
+        env:
+          DISCORD_WEBHOOK_MONTHLY: ${{ secrets.DISCORD_WEBHOOK_MONTHLY }}
+        run: |
+          MONTH=${{ steps.mctx.outputs.month }}
+          python3 post_discord.py --type monthly --month "$MONTH" || true
