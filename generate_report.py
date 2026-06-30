@@ -281,44 +281,96 @@ def finnhub_valid():
     return _finnhub_valid
 
 
-def fetch_analyst_actions(target_date):
-    if not finnhub_valid():
-        return [], []
-    print("Fetching analyst actions (Finnhub)...")
+def _fetch_analyst_actions_yfinance(target_date):
+    """yfinance fallback: pull real upgrade/downgrade data when Finnhub is unavailable."""
+    import yfinance as yf
+    import pandas as pd
     watchlist = ["AAPL","MSFT","NVDA","AMZN","GOOG","META","TSLA","AVGO","NFLX",
                  "AMD","MU","WDC","JPM","GS","MS","BAC","XOM","CVX","UNH","LLY"]
+    target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+    # Also include yesterday for overnight actions
+    prev_dt   = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).date()
     upgrades, downgrades = [], []
     seen = set()
-    from_dt = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
     for ticker in watchlist:
         try:
-            r = requests.get(f"{FINNHUB_BASE}/stock/upgrade-downgrade", params={
-                "symbol": ticker, "from": from_dt, "to": target_date,
-                "token": FINNHUB_KEY
-            }, timeout=8)
-            for item in r.json():
-                key = (item.get("symbol"), item.get("action","").lower(), item.get("toGrade",""))
+            hist = yf.Ticker(ticker).upgrades_downgrades
+            if hist is None or hist.empty:
+                continue
+            hist.index = pd.to_datetime(hist.index).date
+            day_data = hist[hist.index >= prev_dt]
+            for date_idx, row in day_data.iterrows():
+                action    = str(row.get("Action", "")).lower()
+                to_grade  = str(row.get("ToGrade", ""))
+                from_grade= str(row.get("FromGrade", ""))
+                firm      = str(row.get("GradeCompany", ""))
+                key = (ticker, firm, to_grade)
                 if key in seen:
                     continue
                 seen.add(key)
-                action = item.get("action", "").lower()
-                row = {
-                    "ticker":  item.get("symbol",""),
+                entry = {
+                    "ticker":  ticker,
                     "company": "",
-                    "from":    item.get("fromGrade",""),
-                    "to":      item.get("toGrade",""),
-                    "firm":    item.get("company",""),
-                    "target":  "",
+                    "from":    from_grade,
+                    "to":      to_grade,
+                    "firm":    firm,
+                    "target":  "—",
                 }
-                if action in ("upgrade", "buy", "init"):
-                    upgrades.append(row)
-                elif action in ("downgrade", "sell"):
-                    downgrades.append(row)
-            time.sleep(0.2)
+                if action in ("up", "init"):
+                    upgrades.append(entry)
+                elif action in ("down",):
+                    downgrades.append(entry)
+            time.sleep(0.15)
         except Exception:
             pass
-    print(f"  Upgrades: {len(upgrades)}  Downgrades: {len(downgrades)}")
     return upgrades[:6], downgrades[:6]
+
+
+def fetch_analyst_actions(target_date):
+    # Try Finnhub first (has price targets); fall back to yfinance (free, reliable)
+    if finnhub_valid():
+        print("Fetching analyst actions (Finnhub)...")
+        watchlist = ["AAPL","MSFT","NVDA","AMZN","GOOG","META","TSLA","AVGO","NFLX",
+                     "AMD","MU","WDC","JPM","GS","MS","BAC","XOM","CVX","UNH","LLY"]
+        upgrades, downgrades = [], []
+        seen = set()
+        from_dt = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        for ticker in watchlist:
+            try:
+                r = requests.get(f"{FINNHUB_BASE}/stock/upgrade-downgrade", params={
+                    "symbol": ticker, "from": from_dt, "to": target_date,
+                    "token": FINNHUB_KEY
+                }, timeout=8)
+                for item in r.json():
+                    key = (item.get("symbol"), item.get("action","").lower(), item.get("toGrade",""))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    action = item.get("action", "").lower()
+                    row = {
+                        "ticker":  item.get("symbol",""),
+                        "company": "",
+                        "from":    item.get("fromGrade",""),
+                        "to":      item.get("toGrade",""),
+                        "firm":    item.get("company",""),
+                        "target":  "",
+                    }
+                    if action in ("upgrade", "buy", "init"):
+                        upgrades.append(row)
+                    elif action in ("downgrade", "sell"):
+                        downgrades.append(row)
+                time.sleep(0.2)
+            except Exception:
+                pass
+        if upgrades or downgrades:
+            print(f"  Upgrades: {len(upgrades)}  Downgrades: {len(downgrades)}")
+            return upgrades[:6], downgrades[:6]
+
+    # Finnhub unavailable or returned nothing — use yfinance
+    print("Fetching analyst actions (yfinance fallback)...")
+    upgrades, downgrades = _fetch_analyst_actions_yfinance(target_date)
+    print(f"  Upgrades: {len(upgrades)}  Downgrades: {len(downgrades)}")
+    return upgrades, downgrades
 
 # ---------------------------------------------------------------------------
 # Forex Factory — Economic Calendar
@@ -808,7 +860,7 @@ def analyst_rows_no_reaction(items):
     for x in items:
         rows.append(f"| {x['ticker']} | {x['company']} | {x['from']} | {x['to']} | {x['firm']} | {x['target']} |")
     if not rows:
-        rows = ["| | | | | | |", "| | | | | | |"]
+        rows = ["| — | *No actions reported today* | — | — | — | — |"]
     return rows
 
 def econ_rows(events, include_actual=False):

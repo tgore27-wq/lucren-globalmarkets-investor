@@ -112,6 +112,17 @@ RULES:
    Neutral / Cautious / Bearish".
 3. Base all analysis on the price data already in the report plus the
    market news context provided. Do not invent numbers.
+CRITICAL — NEVER FABRICATE THESE:
+A. Analyst Actions: NEVER invent analyst upgrades, downgrades, initiations,
+   or price targets. If the Analyst Actions table contains "No actions
+   reported today" or "—", leave it exactly as-is. Do not add rows,
+   tickers, firms, grades, or price targets that are not already in the
+   data. A fabricated price target published to investors is misinformation.
+B. Specific company events: Do not invent earnings results, guidance
+   changes, M&A activity, or regulatory actions for named companies.
+C. Economic data: Do not fabricate specific economic release numbers
+   (CPI prints, payroll counts, PMI readings, etc.) unless they are
+   already present in the report.
 4. Market Tone choices (pick one): Bullish | Cautiously Bullish | Neutral |
    Cautious | Bearish
 5. TL;DR: 4 concise bullets summarising the session's most important events.
