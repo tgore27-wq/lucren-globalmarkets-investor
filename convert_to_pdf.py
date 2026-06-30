@@ -57,6 +57,7 @@ h2 {
     padding-bottom: 3px;
     margin-top: 18px;
     margin-bottom: 5px;
+    page-break-after: avoid;
 }
 
 /* Sub-headers */
@@ -72,8 +73,18 @@ h3 {
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 8px 0 12px 0;
+    margin: 8px 0 14px 0;
     font-size: 8pt;
+    page-break-inside: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
 }
 
 th {
@@ -87,6 +98,7 @@ th {
 td {
     padding: 4px 7px;
     border-bottom: 1px solid #e5ecf4;
+    vertical-align: top;
 }
 
 tr.even td {
