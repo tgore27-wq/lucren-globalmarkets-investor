@@ -173,12 +173,22 @@ FOOTER_HTML = """
 """
 
 # ---------------------------------------------------------------------------
-# Zebra-stripe helper
+# Markdown pre-processing
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+def _strip_empty_table_rows(md: str) -> str:
+    """Remove markdown table rows that contain only pipes and whitespace."""
+    return _re.sub(r'^\|(\s*\|)+\s*$\n?', '', md, flags=_re.MULTILINE)
+
+
+# ---------------------------------------------------------------------------
+# HTML post-processing helpers
 # ---------------------------------------------------------------------------
 
 def _zebra_tables(html: str) -> str:
     """Add alternating row classes to all tables for even/odd styling."""
-    import re
     result = []
     row_count = [0]
     in_tbody = [False]
@@ -197,6 +207,23 @@ def _zebra_tables(html: str) -> str:
 
     return "".join(result)
 
+
+def _force_page_breaks(html: str) -> str:
+    """
+    Inject page-break-before divs before sections whose tables have
+    tall multi-line cells that xhtml2pdf cannot flow across page boundaries.
+    Wide 7-column tables with long Catalyst / Reaction text cause this.
+    """
+    BREAK_BEFORE = ["Top Gainers", "Top Losers"]
+    for section in BREAK_BEFORE:
+        html = _re.sub(
+            r'(<h2>)(' + _re.escape(section) + r')',
+            r'<div style="page-break-before: always"></div>\1\2',
+            html,
+            flags=_re.IGNORECASE,
+        )
+    return html
+
 # ---------------------------------------------------------------------------
 # Converter
 # ---------------------------------------------------------------------------
@@ -206,6 +233,7 @@ def convert(md_path: Path, out_path: Path = None) -> Path:
         out_path = md_path.with_suffix(".pdf")
 
     md_text = md_path.read_text(encoding="utf-8")
+    md_text = _strip_empty_table_rows(md_text)
 
     html_body = markdown.markdown(
         md_text,
@@ -213,6 +241,7 @@ def convert(md_path: Path, out_path: Path = None) -> Path:
     )
 
     html_body = _zebra_tables(html_body)
+    html_body = _force_page_breaks(html_body)
 
     full_html = f"""<!DOCTYPE html>
 <html lang="en">
