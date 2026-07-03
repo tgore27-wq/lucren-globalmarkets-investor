@@ -3,8 +3,9 @@
 # Called by crontab; replaces sync_local.sh + GitHub Actions schedule.
 #
 # Usage:
-#   run_report.sh open
+#   run_report.sh open              # uses today's date
 #   run_report.sh close
+#   run_report.sh close 2026-07-02  # override date (YYYY-MM-DD) for late-night runs
 #   run_report.sh weekly
 #   run_report.sh monthly
 # ---------------------------------------------------------------------------
@@ -15,8 +16,15 @@ LOG="$HOME/Library/Logs/GlobalMarkets-investor-sync.log"
 PYTHON="/usr/local/bin/python3"
 GIT="/usr/bin/git"
 TYPE="${1:-open}"
-DATE=$(date +%Y-%m-%d)
-DATE_SLUG=$(date +%m-%d-%y)
+# Optional second arg overrides date — use when cron fires just after midnight
+if [[ -n "${2:-}" ]]; then
+    DATE="$2"
+    DATE_SLUG=$(date -jf "%Y-%m-%d" "$DATE" +%m-%d-%y 2>/dev/null || \
+        $PYTHON -c "from datetime import datetime; print(datetime.strptime('$DATE','%Y-%m-%d').strftime('%m-%d-%y'))")
+else
+    DATE=$(date +%Y-%m-%d)
+    DATE_SLUG=$(date +%m-%d-%y)
+fi
 
 # Monday of current week (for weekly filename)
 MON_SLUG=$(date -v-Mon +%m-%d-%y 2>/dev/null || $PYTHON -c "
@@ -89,7 +97,9 @@ echo "   ✓ Narratives filled" >> "$LOG"
 echo "3. Committing and pushing..." >> "$LOG"
 $GIT config user.name  "GlobalMarkets Bot"
 $GIT config user.email "bot@globalmarkets.lucren"
-$GIT add Open/ Close/ Weekly/ Monthly/ >> "$LOG" 2>&1
+# Stage ONLY today's report file — older .md files in these folders have
+# private Lucren content ideas appended and must never reach GitHub.
+$GIT add "$MD" >> "$LOG" 2>&1
 if $GIT diff --cached --quiet; then
     echo "   Nothing new to commit." >> "$LOG"
 else

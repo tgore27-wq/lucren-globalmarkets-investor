@@ -852,7 +852,7 @@ def analyst_rows(items):
     for x in items:
         rows.append(f"| {x['ticker']} | {x['company']} | {x['from']} | {x['to']} | {x['firm']} | {x['target']} | |")
     if not rows:
-        rows = ["| | | | | | | |", "| | | | | | | |"]
+        rows = ["| — | *No actions reported today* | — | — | — | — | — |"]
     return rows
 
 def analyst_rows_no_reaction(items):
