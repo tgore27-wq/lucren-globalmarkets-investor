@@ -84,7 +84,9 @@ def format_title(report_type: str, path: Path) -> str:
         try:
             mon = datetime(2000 + int(dp[2]), int(dp[0]), int(dp[1]))
             fri = mon + timedelta(days=4)
-            return f"Week of {mon.strftime('%B %-d')}–{fri.strftime('%-d, %Y')} Weekly Report"
+            if mon.month == fri.month:
+                return f"Week of {mon.strftime('%B %-d')}–{fri.strftime('%-d, %Y')} Weekly Report"
+            return f"Week of {mon.strftime('%B %-d')} – {fri.strftime('%B %-d, %Y')} Weekly Report"
         except (ValueError, IndexError):
             return f"{stem} Weekly Report"
 
