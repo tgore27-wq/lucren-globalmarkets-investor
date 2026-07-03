@@ -165,10 +165,24 @@ def fill_with_claude(report_path: Path, news_text: str, report_date: str) -> str
 
     holiday_block = ""
     if holiday:
+        from datetime import datetime as _dt, timedelta as _td
+        from generate_report import market_holiday as _mh
+        _d = _dt.strptime(report_date, "%Y-%m-%d").date()
+        _prev = _d - _td(days=1)
+        while _prev.weekday() >= 5 or _mh(_prev.strftime("%Y-%m-%d")):
+            _prev -= _td(days=1)
+        _next = _d + _td(days=1)
+        while _next.weekday() >= 5 or _mh(_next.strftime("%Y-%m-%d")):
+            _next += _td(days=1)
+        prev_str = _prev.strftime("%A, %B %-d, %Y")
+        next_str = _next.strftime("%A, %B %-d, %Y")
         holiday_block = f"""
 === CRITICAL: US MARKET HOLIDAY ===
 US equity markets (NYSE/Nasdaq) are CLOSED today for {holiday}. There is NO
-US trading session today. The US index, sector ETF, volatility, and yield
+US trading session today.
+EXACT DATES — use these verbatim, do NOT compute dates yourself:
+- Last completed US trading session: {prev_str}
+- Next US trading session: {next_str} The US index, sector ETF, volatility, and yield
 data in this report are carried over from the LAST COMPLETED trading session.
 You MUST write every narrative section accordingly:
 - State clearly and early that US markets are closed today for {holiday}
