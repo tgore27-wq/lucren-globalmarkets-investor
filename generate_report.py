@@ -928,6 +928,37 @@ def fg_label_detail(score):
     return "Extreme Greed"
 
 # ---------------------------------------------------------------------------
+# US market holidays (NYSE/Nasdaq full closures)
+# ---------------------------------------------------------------------------
+
+US_MARKET_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-01-19": "Martin Luther King Jr. Day",
+    "2026-02-16": "Presidents' Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-25": "Memorial Day",
+    "2026-06-19": "Juneteenth",
+    "2026-07-03": "Independence Day (observed)",
+    "2026-09-07": "Labor Day",
+    "2026-11-26": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2027-01-01": "New Year's Day",
+    "2027-01-18": "Martin Luther King Jr. Day",
+    "2027-02-15": "Presidents' Day",
+    "2027-03-26": "Good Friday",
+    "2027-05-31": "Memorial Day",
+    "2027-06-18": "Juneteenth (observed)",
+    "2027-07-05": "Independence Day (observed)",
+    "2027-09-06": "Labor Day",
+    "2027-11-25": "Thanksgiving Day",
+    "2027-12-24": "Christmas Day (observed)",
+}
+
+def market_holiday(date_str):
+    """Return holiday name if US equity markets are closed on date_str, else None."""
+    return US_MARKET_HOLIDAYS.get(date_str)
+
+# ---------------------------------------------------------------------------
 # Open report builder
 # ---------------------------------------------------------------------------
 
@@ -966,7 +997,7 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
         f"# Market Open Report — {dstr} ({dow})",
         f"**Report Type:** Open",
         f"**Generated:** {now_et} ET",
-        f"**Market Status:** Pre-Market / Opening",
+        f"**Market Status:** {'CLOSED — ' + market_holiday(report_date) if market_holiday(report_date) else 'Pre-Market / Opening'}",
         "", "---", "",
         "## Market Tone",
         "**Overall:** Bullish / Cautiously Bullish / Neutral / Cautious / Bearish",
@@ -1189,7 +1220,7 @@ def build_close_report(report_date, prices, macro, gainers, losers,
         f"# Market Close Report — {dstr} ({dow})",
         f"**Report Type:** Close",
         f"**Generated:** {now_et} ET",
-        f"**Market Status:** Closed",
+        f"**Market Status:** {'CLOSED ALL DAY — ' + market_holiday(report_date) if market_holiday(report_date) else 'Closed'}",
         "", "---", "",
         "## Market Tone",
         "**Overall:** Bullish / Cautiously Bullish / Neutral / Cautious / Bearish",

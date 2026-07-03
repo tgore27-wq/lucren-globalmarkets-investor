@@ -157,10 +157,36 @@ def fill_with_claude(report_path: Path, news_text: str, report_date: str) -> str
     content = report_path.read_text()
     fname = report_path.name
 
+    try:
+        from generate_report import market_holiday
+        holiday = market_holiday(report_date)
+    except Exception:
+        holiday = None
+
+    holiday_block = ""
+    if holiday:
+        holiday_block = f"""
+=== CRITICAL: US MARKET HOLIDAY ===
+US equity markets (NYSE/Nasdaq) are CLOSED today for {holiday}. There is NO
+US trading session today. The US index, sector ETF, volatility, and yield
+data in this report are carried over from the LAST COMPLETED trading session.
+You MUST write every narrative section accordingly:
+- State clearly and early that US markets are closed today for {holiday}
+  and name the next trading day.
+- Describe all US equity/sector/VIX figures as "as of the last session's
+  close" — NEVER as intraday action happening today.
+- International markets, crypto, and some commodity/futures data may reflect
+  genuine trading today and can be described as today's moves.
+- No US economic data is released today (federal holiday). Do not list any
+  US releases in today's economic calendar; mark it closed/none.
+- Do not describe volume, liquidity, breadth, or a "session" for US equities
+  today — there is none.
+"""
+
     user_message = f"""\
 Report date: {report_date}
 File: {fname}
-
+{holiday_block}
 === MARKET NEWS CONTEXT ===
 {news_text}
 
