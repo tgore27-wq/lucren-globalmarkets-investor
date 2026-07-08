@@ -116,6 +116,12 @@ def post_report(report_type: str, path: Path) -> bool:
         print(f"  [ERROR] Report file not found: {path}")
         return False
 
+    if "Lucren Content Ideas" in path.read_text(encoding="utf-8"):
+        print(f"  [FATAL] {path} contains the private 'Lucren Content Ideas' "
+              f"section. Refusing to post — this file must never reach Discord "
+              f"or GitHub. Regenerate the PDF from the clean public git revision instead.")
+        return False
+
     title = format_title(report_type, path)
     pdf_name = path.stem + ".pdf"
 
