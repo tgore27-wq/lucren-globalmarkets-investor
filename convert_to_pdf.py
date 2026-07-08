@@ -179,8 +179,41 @@ FOOTER_HTML = """
 import re as _re
 
 def _strip_empty_table_rows(md: str) -> str:
-    """Remove markdown table rows that contain only pipes and whitespace."""
-    return _re.sub(r'^\|(\s*\|)+\s*$\n?', '', md, flags=_re.MULTILINE)
+    """Remove markdown table rows that contain only pipes and whitespace.
+
+    Uses [ \\t]* (not \\s*) so the match can never cross a newline — with
+    \\s*, two+ consecutive empty rows would greedily absorb the blank line
+    separating the table from a following "---", merging the divider into
+    the table as a malformed phantom row and corrupting xhtml2pdf's column
+    layout for the whole table.
+    """
+    return _re.sub(r'^\|(?:[ \t]*\|)+[ \t]*$\n?', '', md, flags=_re.MULTILINE)
+
+
+_DIVIDER_RE = _re.compile(r'^\|?[\s:|-]+\|?$')
+
+
+def _fill_blank_cells(md: str) -> str:
+    """Replace fully-empty table cells with an em dash.
+
+    xhtml2pdf computes column widths from cell content; a genuinely empty
+    <td> (zero characters) throws off that calculation and can make an
+    adjacent column's header render as an overlapping floating box. Every
+    other blank value in these reports already uses "—", so this just
+    makes real data rows consistent with placeholder rows.
+    """
+    out_lines = []
+    for line in md.splitlines(keepends=True):
+        stripped = line.rstrip("\n")
+        if stripped.startswith("|") and stripped.endswith("|") and not _DIVIDER_RE.match(stripped):
+            cells = stripped.split("|")
+            # cells[0] and cells[-1] are artifacts of the leading/trailing pipe
+            for i in range(1, len(cells) - 1):
+                if cells[i].strip() == "":
+                    cells[i] = " — "
+            stripped = "|".join(cells)
+        out_lines.append(stripped + ("\n" if line.endswith("\n") else ""))
+    return "".join(out_lines)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +267,7 @@ def convert(md_path: Path, out_path: Path = None) -> Path:
 
     md_text = md_path.read_text(encoding="utf-8")
     md_text = _strip_empty_table_rows(md_text)
+    md_text = _fill_blank_cells(md_text)
 
     html_body = markdown.markdown(
         md_text,
