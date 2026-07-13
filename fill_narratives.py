@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -253,6 +254,90 @@ def report_date_from_path(path: Path) -> str:
         return f"20{p[2]}-{p[0]}-{p[1]}"
     return datetime.now().strftime("%Y-%m-%d")
 
+def _split_preamble_and_sections(text):
+    """Split a report into (preamble_before_first_H2, [(h2_title, full_section_text)])."""
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines) and not lines[i].strip().startswith("## "):
+        i += 1
+    preamble = "\n".join(lines[:i])
+    sections = []
+    cur_title, cur_lines = None, []
+    for line in lines[i:]:
+        if line.strip().startswith("## "):
+            if cur_title is not None:
+                sections.append((cur_title, "\n".join(cur_lines)))
+            cur_title = line.strip()[3:].strip()
+            cur_lines = [line]
+        else:
+            cur_lines.append(line)
+    if cur_title is not None:
+        sections.append((cur_title, "\n".join(cur_lines)))
+    return preamble, sections
+
+
+_BLANK_CELL_RE = re.compile(r'\|\s*\|')
+_PLACEHOLDER_RE = re.compile(r'\[Fill in\]|Bullish / Cautiously Bullish', re.IGNORECASE)
+
+
+def _section_is_fully_populated(section_text: str) -> bool:
+    """True if a section's table(s) already had every cell filled in — i.e. it
+    was real data written by generate_report.py, not a placeholder for Claude
+    to complete. Sections with no table at all (Market Tone, Fed Watch,
+    Opportunities, ...) are narrative-only and are never considered locked."""
+    if _PLACEHOLDER_RE.search(section_text):
+        return False
+    has_table = False
+    for line in section_text.split("\n"):
+        s = line.strip()
+        if s.startswith("|"):
+            has_table = True
+            if _BLANK_CELL_RE.search(s):
+                return False
+    return has_table
+
+
+def guard_against_corruption(original: str, filled: str) -> str:
+    """Defense against LLM transcription drift.
+
+    fill_with_claude() asks Claude to transcribe the ENTIRE report back,
+    including data tables that were already 100% populated before the call —
+    it only needs to *add* text to blank/placeholder sections. Asking a model
+    to reproduce large verbatim tables alongside genuinely-generated content
+    is a known way to get a duplicated or dropped row (this is exactly what
+    happened to the Sector ETFs table in the 2026-07-09 close report — an
+    extra Consumer Discretionary row appeared with no code path that could
+    have produced it).
+
+    Any section that was already fully populated (no blank cells, no
+    placeholders) in the original is restored verbatim here, regardless of
+    what Claude returned for it — only genuinely-blank sections are Claude's
+    to fill.
+    """
+    _, orig_sections = _split_preamble_and_sections(original)
+    orig_map = dict(orig_sections)
+    filled_preamble, filled_sections = _split_preamble_and_sections(filled)
+
+    repaired = [filled_preamble]
+    seen_titles = set()
+    for title, text in filled_sections:
+        seen_titles.add(title)
+        orig_text = orig_map.get(title)
+        if orig_text is not None and _section_is_fully_populated(orig_text) and text.rstrip() != orig_text.rstrip():
+            print(f"  [GUARD] '{title}' was altered by Claude despite being fully "
+                  f"populated before the API call — restoring original verbatim.")
+            repaired.append(orig_text)
+        else:
+            repaired.append(text)
+
+    for title, orig_text in orig_sections:
+        if title not in seen_titles and _section_is_fully_populated(orig_text):
+            print(f"  [GUARD] '{title}' was dropped by Claude — re-inserting original verbatim.")
+            repaired.append(orig_text)
+
+    return "\n".join(repaired)
+
+
 def fill_file(path: Path, news_text: str):
     """Fill narratives for a single report file."""
     if not path.exists():
@@ -260,7 +345,9 @@ def fill_file(path: Path, news_text: str):
         return
     report_date = report_date_from_path(path)
     print(f"  Filling {path.name} (date: {report_date})")
+    original = path.read_text()
     filled = fill_with_claude(path, news_text, report_date)
+    filled = guard_against_corruption(original, filled)
     path.write_text(filled)
     print(f"  ✓ {path.name} saved.")
 
