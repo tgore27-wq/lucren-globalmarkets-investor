@@ -209,7 +209,11 @@ File: {fname}
 {content}
 """
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    # Explicit timeout: a stalled TCP connection (as opposed to a clean
+    # connection-refused) has no default bound here otherwise, and can hang
+    # the whole run_report.sh chain well past the Discord-post window
+    # instead of failing fast so a retry can happen. Seen 2026-07-15.
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY, timeout=90.0)
     print(f"  Calling Claude API for {fname}...")
 
     try:
