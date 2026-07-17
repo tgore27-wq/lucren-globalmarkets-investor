@@ -116,11 +116,27 @@ def post_report(report_type: str, path: Path) -> bool:
         print(f"  [ERROR] Report file not found: {path}")
         return False
 
-    if "Lucren Content Ideas" in path.read_text(encoding="utf-8"):
+    text = path.read_text(encoding="utf-8")
+
+    if "Lucren Content Ideas" in text:
         print(f"  [FATAL] {path} contains the private 'Lucren Content Ideas' "
               f"section. Refusing to post — this file must never reach Discord "
               f"or GitHub. Regenerate the PDF from the clean public git revision instead.")
         return False
+
+    # fill_narratives.py falls back to returning the report UNCHANGED if the
+    # Claude API call fails (connection error, timeout, etc.) — this has twice
+    # now let a report with literal unfilled placeholder text reach Discord
+    # and GitHub (2026-07-15, 2026-07-16) because nothing downstream checked
+    # for it. Refuse to post until the narrative fill has actually happened.
+    PLACEHOLDER_MARKERS = ("[Fill in]", "Bullish / Cautiously Bullish / Neutral / Cautious / Bearish")
+    for marker in PLACEHOLDER_MARKERS:
+        if marker in text:
+            print(f"  [FATAL] {path} still contains the unfilled placeholder "
+                  f"'{marker}' — the Claude narrative-fill step likely failed "
+                  f"silently. Refusing to post. Rerun fill_narratives.py on "
+                  f"this file and confirm it succeeds before posting.")
+            return False
 
     title = format_title(report_type, path)
     pdf_name = path.stem + ".pdf"

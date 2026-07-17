@@ -93,6 +93,23 @@ else
 fi
 echo "   ✓ Narratives filled" >> "$LOG"
 
+# ── 2b. Refuse to publish an unfilled report ─────────────────────────────────
+# fill_narratives.py falls back to returning the report UNCHANGED if the
+# Claude API call fails (connection error, timeout, etc.) instead of erroring
+# out — which twice now (2026-07-15, 2026-07-16) let a report with literal
+# unfilled placeholder text reach the public GitHub repo. post_discord.py has
+# its own copy of this same check and will refuse to post either way, but
+# stopping here also skips the private content-ideas step, which has no
+# business summarizing placeholder text, and avoids committing broken data
+# to the public repo in the first place.
+if grep -qE '\[Fill in\]|Bullish / Cautiously Bullish / Neutral / Cautious / Bearish' "$MD" 2>/dev/null; then
+    echo "   [FATAL] $MD still contains unfilled placeholder text — the Claude" >> "$LOG"
+    echo "           narrative fill likely failed. Not committing, pushing, or" >> "$LOG"
+    echo "           posting. Rerun fill_narratives.py on this file by hand." >> "$LOG"
+    echo "=== Aborted: $TYPE $DATE $(date '+%H:%M:%S') (unfilled report) ===" >> "$LOG"
+    exit 1
+fi
+
 # ── 3. Commit and push to GitHub ────────────────────────────────────────────
 echo "3. Committing and pushing..." >> "$LOG"
 $GIT config user.name  "GlobalMarkets Bot"
