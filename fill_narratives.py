@@ -291,13 +291,23 @@ def _split_preamble_and_sections(text):
 
 _BLANK_CELL_RE = re.compile(r'\|\s*\|')
 _PLACEHOLDER_RE = re.compile(r'\[Fill in\]|Bullish / Cautiously Bullish', re.IGNORECASE)
+_BLANK_BOLD_LABEL_RE = re.compile(r'^\*\*.+?:\*\*\s*$')
 
 
 def _section_is_fully_populated(section_text: str) -> bool:
     """True if a section's table(s) already had every cell filled in — i.e. it
     was real data written by generate_report.py, not a placeholder for Claude
     to complete. Sections with no table at all (Market Tone, Fed Watch,
-    Opportunities, ...) are narrative-only and are never considered locked."""
+    Opportunities, ...) are narrative-only and are never considered locked.
+
+    Also checks for blank bold-label lines like "**Sector rotation
+    narrative:**" with nothing after the colon — several report sections
+    (e.g. Weekly's "Sector Performance") pair a fully-numeric table with one
+    of these narrative labels for Claude to complete. Missing this let the
+    guard incorrectly treat the whole section as locked and discard Claude's
+    legitimate narrative fill along with it (caught 2026-07-20, Weekly
+    "Sector Performance — Week": the guard fired and reverted a real,
+    non-corrupted sector-rotation writeup back to blank)."""
     if _PLACEHOLDER_RE.search(section_text):
         return False
     has_table = False
@@ -307,6 +317,8 @@ def _section_is_fully_populated(section_text: str) -> bool:
             has_table = True
             if _BLANK_CELL_RE.search(s):
                 return False
+        elif _BLANK_BOLD_LABEL_RE.match(s):
+            return False
     return has_table
 
 
