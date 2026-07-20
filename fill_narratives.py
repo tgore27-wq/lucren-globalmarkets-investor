@@ -209,21 +209,30 @@ File: {fname}
 {content}
 """
 
-    # Explicit timeout: a stalled TCP connection (as opposed to a clean
-    # connection-refused) has no default bound here otherwise, and can hang
-    # the whole run_report.sh chain well past the Discord-post window
-    # instead of failing fast so a retry can happen. Seen 2026-07-15.
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY, timeout=90.0)
+    # Explicit timeout + bounded retries as a backstop (see below for the
+    # actual fix — this just keeps any residual stall bounded rather than
+    # hanging indefinitely).
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY, timeout=90.0, max_retries=1)
     print(f"  Calling Claude API for {fname}...")
 
     try:
-        response = client.messages.create(
+        # Root cause of the repeated "Request timed out or interrupted"
+        # failures (2026-07-15, -16 x4, -17, -20): this is a non-streaming
+        # call with max_tokens=8192, which per Anthropic's own docs
+        # (platform.claude.com/docs/en/api/errors#long-requests) sits on an
+        # idle connection while the full response generates — exactly the
+        # condition their docs warn "some networks may drop... after a
+        # variable period of time." Streaming keeps data flowing throughout
+        # generation instead of idling, which is their documented fix, and
+        # get_final_message() still returns the identical assembled Message.
+        with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=8192,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
-        )
-        return response.content[0].text
+        ) as stream:
+            message = stream.get_final_message()
+        return message.content[0].text
     except Exception as e:
         print(f"  [ERROR] Claude API call failed: {e}")
         return content   # return original if API fails

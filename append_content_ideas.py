@@ -116,7 +116,7 @@ def generate_ideas(report_content: str, report_date: str) -> str:
             "_Content ideas unavailable: ANTHROPIC_API_KEY not set in .env_\n\n---\n"
         )
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY, timeout=90.0, max_retries=1)
 
     user_message = (
         f"Report date: {report_date}\n\n"
@@ -125,13 +125,17 @@ def generate_ideas(report_content: str, report_date: str) -> str:
 
     print(f"  Calling Claude API for content ideas ({report_date})...")
     try:
-        response = client.messages.create(
+        # Streaming instead of a blocking create() call — see fill_narratives.py's
+        # fill_with_claude() for why (idle-connection drops on non-streaming
+        # requests; Anthropic's documented fix for exactly this failure mode).
+        with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=3000,
             system=SYSTEM_PROMPT.format(date=report_date),
             messages=[{"role": "user", "content": user_message}],
-        )
-        return "\n\n" + response.content[0].text.strip() + "\n"
+        ) as stream:
+            message = stream.get_final_message()
+        return "\n\n" + message.content[0].text.strip() + "\n"
     except Exception as e:
         print(f"  [ERROR] Claude API failed: {e}")
         return (
