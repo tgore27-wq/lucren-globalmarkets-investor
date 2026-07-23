@@ -494,11 +494,22 @@ def extract_fg_number(text):
     return None, None
 
 
+_NEGATION_RE = re.compile(r"\b(not|n't|isn't|wasn't|far from|rather than|instead of)\s*$")
+
+
 def keyword_bucket(text):
+    """Match text against SENTIMENT_WORDS in priority order, skipping any
+    match that's directly negated (e.g. "Not Extreme Fear" must not be read
+    as Extreme Fear). Caught 2026-07-23: a close report's Reading led with
+    plain "Fear" but also contained "...Not Extreme Fear, but caution is
+    rising" — the naive substring search matched "Extreme Fear" first and
+    rendered a meter contradicting the report's own text."""
     low = text.lower()
     for pattern, pos in SENTIMENT_WORDS:
-        m = re.search(pattern, low)
-        if m:
+        for m in re.finditer(pattern, low):
+            preceding = low[max(0, m.start() - 15):m.start()]
+            if _NEGATION_RE.search(preceding):
+                continue
             return pos, m.group(0).title().replace(' To ', ' – ')
     return None, None
 
