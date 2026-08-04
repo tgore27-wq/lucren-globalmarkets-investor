@@ -497,21 +497,48 @@ def extract_fg_number(text):
 _NEGATION_RE = re.compile(r"\b(not|n't|isn't|wasn't|far from|rather than|instead of)\s*$")
 
 
-def keyword_bucket(text):
-    """Match text against SENTIMENT_WORDS in priority order, skipping any
-    match that's directly negated (e.g. "Not Extreme Fear" must not be read
-    as Extreme Fear). Caught 2026-07-23: a close report's Reading led with
-    plain "Fear" but also contained "...Not Extreme Fear, but caution is
-    rising" — the naive substring search matched "Extreme Fear" first and
-    rendered a meter contradicting the report's own text."""
-    low = text.lower()
+def _bold_spans(text):
+    """Character ranges covered by **bold** markup, so a match can be
+    checked for "is this the model's marked conclusion" independent of
+    where in the sentence it falls."""
+    return [m.span(1) for m in re.finditer(r'\*\*(.+?)\*\*', text)]
+
+
+def _find_match(text, low, bold_ranges, require_bold):
     for pattern, pos in SENTIMENT_WORDS:
         for m in re.finditer(pattern, low):
             preceding = low[max(0, m.start() - 15):m.start()]
             if _NEGATION_RE.search(preceding):
                 continue
+            in_bold = any(b0 <= m.start() and m.end() <= b1 for b0, b1 in bold_ranges)
+            if require_bold and not in_bold:
+                continue
             return pos, m.group(0).title().replace(' To ', ' – ')
     return None, None
+
+
+def keyword_bucket(text):
+    """Match text against SENTIMENT_WORDS in priority order, skipping any
+    match that's directly negated (e.g. "Not Extreme Fear" must not be read
+    as Extreme Fear — caught 2026-07-23).
+
+    Prefers a match inside **bold** markup over any unbolded match,
+    regardless of which appears first or which pattern has higher nominal
+    priority — the model consistently bolds its actual conclusion ("skews
+    toward **Greed**") while using the opposite word earlier purely as
+    scaffolding/comparison ("below the threshold associated with elevated
+    fear"). A plain first-occurrence scan picked up that scaffolding
+    "fear" and rendered a meter contradicting a Reading whose real
+    conclusion was Greed, three times over in the same paragraph
+    (caught 2026-08-04). Falls back to an unbolded scan only if nothing
+    bolded matches, preserving behavior for text with no emphasis at all.
+    """
+    low = text.lower()
+    bold_ranges = _bold_spans(text)
+    pos, label = _find_match(text, low, bold_ranges, require_bold=True)
+    if pos is not None:
+        return pos, label
+    return _find_match(text, low, bold_ranges, require_bold=False)
 
 
 def render_sentiment_node(node: Node):
