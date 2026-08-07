@@ -10,7 +10,6 @@ yf.download() batches many tickers into one threaded call instead.
 import io
 import json
 import time
-from datetime import datetime
 from pathlib import Path
 
 import requests
