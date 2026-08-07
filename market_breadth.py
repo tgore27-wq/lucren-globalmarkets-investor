@@ -74,11 +74,13 @@ def compute_breadth(bars, universe, as_of_date, week_start=None):
     bars is unusable.
 
     week_start (optional date string): when provided, the `movers` list
-    (top_gainers/top_losers) is computed as last close vs. the first
-    close on/after week_start (i.e. Monday's open-ish reference) instead
-    of the default day-over-day (last vs. prior close). Advances/
-    declines/MA%/52wk-high-low counts are always day-over-day and are
-    unaffected by week_start."""
+    (top_gainers/top_losers) is computed as last close vs. the last close
+    strictly before week_start (i.e. the prior Friday's close — standard
+    week-over-week convention) instead of the default day-over-day (last
+    vs. prior close). Falls back to the first close on/after week_start
+    only if no earlier close exists in the data. Advances/declines/MA%/
+    52wk-high-low counts are always day-over-day and are unaffected by
+    week_start."""
     if bars is None or bars.empty or not isinstance(bars.columns, pd.MultiIndex):
         return None
 
@@ -121,10 +123,23 @@ def compute_breadth(bars, universe, as_of_date, week_start=None):
 
         mover_pct = (last / prev - 1) * 100
         if monday is not None:
-            week_ref_series = closes[closes.index >= monday]
-            if not week_ref_series.empty:
-                week_ref = week_ref_series.iloc[0]
+            # Standard week-over-week convention: reference the last close
+            # strictly BEFORE Monday (i.e. the prior Friday's close), not
+            # Monday's own close — using Monday's close as the baseline
+            # silently drops Monday's entire session from the "Weekly %"
+            # figure and misranks movers whose big move happened Monday.
+            pre_week_series = closes[closes.index < monday]
+            if not pre_week_series.empty:
+                week_ref = pre_week_series.iloc[-1]
                 mover_pct = (last / week_ref - 1) * 100
+            else:
+                # No close before Monday exists (e.g. very start of the
+                # dataset) — fall back to Monday's own close as the
+                # reference rather than failing.
+                week_ref_series = closes[closes.index >= monday]
+                if not week_ref_series.empty:
+                    week_ref = week_ref_series.iloc[0]
+                    mover_pct = (last / week_ref - 1) * 100
 
         info = by_ticker.get(ticker, {})
         movers.append((mover_pct, ticker,
@@ -157,8 +172,8 @@ def fetch_market_breadth(as_of_date, week_start=None):
     this pipeline (see fetch_premarket_movers in generate_report.py).
 
     week_start (optional): passed through to compute_breadth() so the
-    weekly report path can rank movers vs. Monday's reference close
-    instead of the default day-over-day comparison."""
+    weekly report path can rank movers vs. the prior Friday's close
+    (week-over-week) instead of the default day-over-day comparison."""
     print("Fetching market breadth (S&P 500, yfinance bulk)...")
     try:
         universe = get_sp500_universe()

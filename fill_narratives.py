@@ -125,7 +125,7 @@ C. Economic data: Do not fabricate specific economic release numbers
    (CPI prints, payroll counts, PMI readings, etc.) unless they are
    already present in the report.
 D. Per-company tables with ZERO real data: some report sections (e.g.
-   Weekly/Monthly "Top Gainers of the Week", "Analyst Actions — Week in
+   Monthly "Month's Top Gainers/Losers", "Analyst Actions — Week in
    Review") are tables where EVERY row starts completely blank because no
    per-company data source is connected for that section — this is
    different from case A, where the table already has real rows and just
@@ -138,7 +138,11 @@ D. Per-company tables with ZERO real data: some report sections (e.g.
    it at that. Do not reference these invented companies/tickers anywhere
    else in the report (narrative sections, opportunities, risks) either —
    an invented per-company fact doesn't become real by being reused in
-   prose.
+   prose. NOTE: the Weekly report's "Top Gainers/Losers of the Week"
+   tables are EXCLUDED from this rule — they are now pre-filled with real
+   data (see rule 12) and must be left exactly as written, not replaced
+   with a "Data not available" row. Rule D still governs the Monthly
+   report's "Month's Top Gainers/Losers" table, which remains blank.
 4. Market Tone choices (pick one): Bullish | Cautiously Bullish | Neutral |
    Cautious | Bearish
 5. TL;DR: 4 concise bullets summarising the session's most important events.

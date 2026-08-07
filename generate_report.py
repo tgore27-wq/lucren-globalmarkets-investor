@@ -631,12 +631,15 @@ def format_breadth_table(breadth, header="## Market Breadth"):
     adv, decl = breadth["advances"], breadth["declines"]
     signal = "Breadth bullish" if adv > decl else ("Breadth bearish" if decl > adv else "Breadth flat")
     ma50, ma200 = breadth["pct_above_50dma"], breadth["pct_above_200dma"]
+    highs, lows = breadth["new_52wk_highs"], breadth["new_52wk_lows"]
+    highs_signal = "Expanding leadership" if highs > lows else ("Narrow" if lows > highs else "Balanced")
+    lows_signal = "Elevated" if lows > highs else ("Contained" if highs > lows else "Balanced")
     lines += [
         f"| S&P 500 Advance / Decline | {adv} / {decl} | {signal} |",
         f"| S&P 500 Above 50-Day MA | {ma50}% | {'Healthy' if ma50 > 60 else 'Weak'} (> 60% healthy) |",
         f"| S&P 500 Above 200-Day MA | {ma200}% | {'Bull market' if ma200 > 70 else 'Below bull threshold'} (> 70%) |",
-        f"| S&P 500 New 52-Week Highs | {breadth['new_52wk_highs']} | |",
-        f"| S&P 500 New 52-Week Lows | {breadth['new_52wk_lows']} | |",
+        f"| S&P 500 New 52-Week Highs | {highs} | {highs_signal} |",
+        f"| S&P 500 New 52-Week Lows | {lows} | {lows_signal} |",
     ]
     return lines
 
@@ -645,7 +648,7 @@ def format_weekly_movers_table(movers, title):
     best-first for gainers / worst-first for losers, from
     market_breadth.fetch_market_breadth()'s top_gainers/top_losers
     (weekly-referenced when fetch_market_breadth() was called with
-    week_start, i.e. pct_change reflects Monday's reference close vs.
+    week_start, i.e. pct_change reflects the prior Friday's close vs.
     the as_of_date's close, not day-over-day)."""
     lines = ["", "---", "", title, "",
              "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
