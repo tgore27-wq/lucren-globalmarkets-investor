@@ -447,6 +447,64 @@ def fetch_economic_calendar(target_date):
     return filtered
 
 # ---------------------------------------------------------------------------
+# Nasdaq — Earnings Calendar (free, public, no key)
+# ---------------------------------------------------------------------------
+
+_NASDAQ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    "Accept": "application/json",
+}
+
+_NASDAQ_TIME_LABELS = {
+    "time-pre-market":    "Pre",
+    "time-after-hours":   "After",
+    "time-during-market": "During",
+    "time-not-supplied":  "TBD",
+}
+
+def _parse_market_cap(raw):
+    try:
+        return float(str(raw).replace("$", "").replace(",", "") or 0)
+    except Exception:
+        return 0.0
+
+def _fetch_nasdaq_earnings_day(date_str):
+    """Return the single largest-cap company reporting earnings on date_str,
+    or None if the market is closed / no earnings / request fails."""
+    try:
+        r = requests.get("https://api.nasdaq.com/api/calendar/earnings",
+                         params={"date": date_str}, headers=_NASDAQ_HEADERS, timeout=10)
+        rows = (r.json().get("data") or {}).get("rows") or []
+    except Exception as e:
+        print(f"  [Nasdaq earnings] {date_str}: {e}")
+        return None
+    if not rows:
+        return None
+    top = max(rows, key=lambda row: _parse_market_cap(row.get("marketCap")))
+    return {
+        "ticker":  top.get("symbol", ""),
+        "company": top.get("name", ""),
+        "time":    _NASDAQ_TIME_LABELS.get(top.get("time", ""), "TBD"),
+        "eps_est": top.get("epsForecast", ""),
+    }
+
+def fetch_earnings_calendar(report_date):
+    """Most notable (largest market cap) earnings report per weekday, Mon-Fri,
+    for the week containing report_date. Free Nasdaq public endpoint, no key."""
+    print("Fetching earnings calendar (Nasdaq)...")
+    d = datetime.strptime(report_date, "%Y-%m-%d")
+    monday = d - timedelta(days=d.weekday())
+    week = []
+    for i, label in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri"]):
+        day_date = (monday + timedelta(days=i)).strftime("%Y-%m-%d")
+        entry = _fetch_nasdaq_earnings_day(day_date)
+        week.append({"day": label, "date": day_date, **(entry or {})})
+    found = sum(1 for e in week if e.get("ticker"))
+    print(f"  {found}/5 weekdays with a notable earnings report")
+    return week
+
+# ---------------------------------------------------------------------------
 # FMP — Pre/After-Hours Movers
 # ---------------------------------------------------------------------------
 
@@ -963,7 +1021,8 @@ def market_holiday(date_str):
 # ---------------------------------------------------------------------------
 
 def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
-                      upgrades, downgrades, econ_events, fg_score, fg_label):
+                      upgrades, downgrades, econ_events, fg_score, fg_label,
+                      earnings=None):
     fdate  = datetime.strptime(report_date, "%Y-%m-%d").strftime("%m-%d-%y")
     dstr   = datetime.strptime(report_date, "%Y-%m-%d").strftime("%B %-d, %Y")
     dow    = datetime.strptime(report_date, "%Y-%m-%d").strftime("%A")
@@ -1087,12 +1146,17 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
         "## Earnings Calendar — This Week", "",
         "| Day | Ticker | Company | Time | EPS Est | Rev Est | Implied Move |",
         "|-----|--------|---------|------|---------|---------|--------------|",
-        "| Mon | | | Pre / After | | | ±% |",
-        "| Tue | | | | | | |",
-        "| Wed | | | | | | |",
-        "| Thu | | | | | | |",
-        "| Fri | | | | | | |",
     ]
+    for e in (earnings or []):
+        ticker  = e.get("ticker", "")
+        company = e.get("company", "")
+        time_   = e.get("time", "")
+        eps     = e.get("eps_est", "")
+        if not ticker:
+            L.append(f"| {e.get('day', '')} | — | *No major earnings scheduled* | — | — | — | — |")
+        else:
+            L.append(f"| {e.get('day', '')} | {ticker} | {company} | {time_} | "
+                      f"{eps or '—'} | — | — |")
 
     L += ["", "---", "",
         "## Today's Economic Calendar", "",
@@ -1814,9 +1878,10 @@ def main():
             econ    = fetch_economic_calendar(report_date)
 
             if report_type in ("open", "both", "all"):
+                earn = fetch_earnings_calendar(report_date)
                 content = build_open_report(report_date, prices, macro,
                                             pre_g, pre_l, upgr, downgr, econ,
-                                            fg_score, fg_label)
+                                            fg_score, fg_label, earnings=earn)
                 out = REPORTS_DIR / "Open" / f"Open_{fdate}.md"
                 out.write_text(content)
                 print(f"  ✓ Open  → {out}")

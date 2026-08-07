@@ -124,6 +124,21 @@ B. Specific company events: Do not invent earnings results, guidance
 C. Economic data: Do not fabricate specific economic release numbers
    (CPI prints, payroll counts, PMI readings, etc.) unless they are
    already present in the report.
+D. Per-company tables with ZERO real data: some report sections (e.g.
+   Weekly/Monthly "Top Gainers of the Week", "Analyst Actions — Week in
+   Review") are tables where EVERY row starts completely blank because no
+   per-company data source is connected for that section — this is
+   different from case A, where the table already has real rows and just
+   a "—"/"No actions reported" marker to preserve. Rule 2's instruction to
+   fill blank table cells does NOT apply here: do not invent tickers,
+   companies, percentages, price targets, or catalysts to populate these
+   rows. Replace the blank rows with a single row reading "| — | *Data not
+   available — [name what's missing, e.g. weekly per-company movers data]*
+   | — | — | — | — |" (matching the table's actual column count) and leave
+   it at that. Do not reference these invented companies/tickers anywhere
+   else in the report (narrative sections, opportunities, risks) either —
+   an invented per-company fact doesn't become real by being reused in
+   prose.
 4. Market Tone choices (pick one): Bullish | Cautiously Bullish | Neutral |
    Cautious | Bearish
 5. TL;DR: 4 concise bullets summarising the session's most important events.
@@ -133,8 +148,12 @@ C. Economic data: Do not fabricate specific economic release numbers
 9. Key Levels: fill Support, Resistance, Key Level, Notes for each row.
 10. Sentiment Gauges: use CNN Fear & Greed value if present; estimate
     "Greed/Fear/Extreme Fear/Extreme Greed" from VIX and price action if not.
-11. Earnings Calendar: fill in the most relevant earnings for this week
-    based on context; use "—" if unknown.
+11. Earnings Calendar: this table is pre-filled with real data (Nasdaq).
+    Leave every row exactly as written — do not add, remove, or "correct"
+    tickers, companies, EPS estimates, or timing. Same rule as Analyst
+    Actions (CRITICAL rule A): never invent Rev Est or Implied Move figures
+    to replace the "—" placeholders — those are genuinely unavailable from
+    the free data source and must stay "—".
 12. Fed Watch: derive from current rate (shown in report) and recent
     yield-curve data.
 13. After-Hours / Pre-Market Movers: if Catalyst column is blank, infer
@@ -215,6 +234,15 @@ File: {fname}
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY, timeout=90.0, max_retries=1)
     print(f"  Calling Claude API for {fname}...")
 
+    # Weekly/Monthly reports have far more sections (day-by-day breakdowns,
+    # week-by-week rollups) and Claude tends to write longer prose for them
+    # too — 8192 tokens silently truncated Weekly_07-13-26.md mid-sentence
+    # in the Risks section on 2026-07-20, with no error raised (the stream
+    # just ends when max_tokens is hit). Daily Open/Close reports have run
+    # fine at 8192 throughout, so only raise the ceiling for the larger
+    # report types rather than paying for larger output on every call.
+    max_tokens = 16000 if fname.startswith(("Weekly_", "Monthly_")) else 8192
+
     try:
         # Root cause of the repeated "Request timed out or interrupted"
         # failures (2026-07-15, -16 x4, -17, -20): this is a non-streaming
@@ -227,7 +255,7 @@ File: {fname}
         # get_final_message() still returns the identical assembled Message.
         with client.messages.stream(
             model="claude-sonnet-4-6",
-            max_tokens=8192,
+            max_tokens=max_tokens,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
         ) as stream:
