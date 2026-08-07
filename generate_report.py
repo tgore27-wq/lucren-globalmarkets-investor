@@ -1877,12 +1877,14 @@ def main():
             macro   = fetch_fred(report_date)
             upgr, downgr = fetch_analyst_actions(report_date)
             econ    = fetch_economic_calendar(report_date)
+            breadth = market_breadth.fetch_market_breadth(report_date)
 
             if report_type in ("open", "both", "all"):
                 earn = fetch_earnings_calendar(report_date)
                 content = build_open_report(report_date, prices, macro,
                                             pre_g, pre_l, upgr, downgr, econ,
-                                            fg_score, fg_label, earnings=earn)
+                                            fg_score, fg_label, earnings=earn,
+                                            breadth=breadth)
                 out = REPORTS_DIR / "Open" / f"Open_{fdate}.md"
                 out.write_text(content)
                 print(f"  ✓ Open  → {out}")
@@ -1890,7 +1892,8 @@ def main():
             if report_type in ("close", "both", "all"):
                 content = build_close_report(report_date, prices, macro,
                                              gainers, losers, ah_g, ah_l,
-                                             upgr, downgr, econ, fg_score, fg_label)
+                                             upgr, downgr, econ, fg_score, fg_label,
+                                             breadth=breadth)
                 out = REPORTS_DIR / "Close" / f"Close_{fdate}.md"
                 out.write_text(content)
                 print(f"  ✓ Close → {out}")
@@ -1923,9 +1926,11 @@ def main():
                     friday_str
                 )
 
+            week_breadth = market_breadth.fetch_market_breadth(friday_str, week_start=monday_str)
             content = build_weekly_report(
                 monday_str, raw_bars, macro_mon, macro_fri,
-                econ_week, upgr, downgr, fg_score, fg_label
+                econ_week, upgr, downgr, fg_score, fg_label,
+                breadth=week_breadth
             )
             fdate = datetime.strptime(monday_str, "%Y-%m-%d").strftime("%m-%d-%y")
             out = REPORTS_DIR / "Weekly" / f"Weekly_{fdate}.md"
