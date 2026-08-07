@@ -33,6 +33,8 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
+import market_breadth
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -609,6 +611,35 @@ def fmt_price(val, decimals=2):
         return ""
     return f"{val:,.{decimals}f}"
 
+def format_breadth_table(breadth, header="## Market Breadth"):
+    """Shared by Open, Close, and Weekly builders. breadth is the dict
+    from market_breadth.fetch_market_breadth(), or None. Labeled
+    'S&P 500 ...' throughout — NOT 'NYSE'/'Nasdaq', since the universe
+    is the S&P 500 constituent list, which spans both exchanges."""
+    lines = ["", "---", "", header, "",
+             "| Indicator | Value | Signal |",
+             "|-----------|-------|--------|"]
+    if not breadth:
+        lines += [
+            "| S&P 500 Advance / Decline | — / — | *Data not available* |",
+            "| S&P 500 Above 50-Day MA | — % | *Data not available* |",
+            "| S&P 500 Above 200-Day MA | — % | *Data not available* |",
+            "| S&P 500 New 52-Week Highs | — | *Data not available* |",
+            "| S&P 500 New 52-Week Lows | — | *Data not available* |",
+        ]
+        return lines
+    adv, decl = breadth["advances"], breadth["declines"]
+    signal = "Breadth bullish" if adv > decl else ("Breadth bearish" if decl > adv else "Breadth flat")
+    ma50, ma200 = breadth["pct_above_50dma"], breadth["pct_above_200dma"]
+    lines += [
+        f"| S&P 500 Advance / Decline | {adv} / {decl} | {signal} |",
+        f"| S&P 500 Above 50-Day MA | {ma50}% | {'Healthy' if ma50 > 60 else 'Weak'} (> 60% healthy) |",
+        f"| S&P 500 Above 200-Day MA | {ma200}% | {'Bull market' if ma200 > 70 else 'Below bull threshold'} (> 70%) |",
+        f"| S&P 500 New 52-Week Highs | {breadth['new_52wk_highs']} | |",
+        f"| S&P 500 New 52-Week Lows | {breadth['new_52wk_lows']} | |",
+    ]
+    return lines
+
 def nth_prev_trading_date(bars_dict, target_date, n):
     dates = sorted(bars_dict.keys())
     before = [d for d in dates if d <= target_date]
@@ -1022,7 +1053,7 @@ def market_holiday(date_str):
 
 def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
                       upgrades, downgrades, econ_events, fg_score, fg_label,
-                      earnings=None):
+                      earnings=None, breadth=None):
     fdate  = datetime.strptime(report_date, "%Y-%m-%d").strftime("%m-%d-%y")
     dstr   = datetime.strptime(report_date, "%Y-%m-%d").strftime("%B %-d, %Y")
     dow    = datetime.strptime(report_date, "%Y-%m-%d").strftime("%A")
@@ -1118,18 +1149,7 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
         "| Total Put/Call Ratio | | |",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | Breadth bullish / bearish |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth)
 
     L += ["", "---", "",
         "## Yield Curve & Credit", "",
@@ -1250,7 +1270,7 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
 
 def build_close_report(report_date, prices, macro, gainers, losers,
                        ah_gainers, ah_losers, upgrades, downgrades, econ_events,
-                       fg_score, fg_label):
+                       fg_score, fg_label, breadth=None):
     fdate  = datetime.strptime(report_date, "%Y-%m-%d").strftime("%m-%d-%y")
     dstr   = datetime.strptime(report_date, "%Y-%m-%d").strftime("%B %-d, %Y")
     dow    = datetime.strptime(report_date, "%Y-%m-%d").strftime("%A")
@@ -1337,18 +1357,7 @@ def build_close_report(report_date, prices, macro, gainers, losers,
         "| Total Put/Call Ratio (close) | | | |",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | Breadth bullish / bearish |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth)
 
     L += ["", "---", "",
         "## Yield Curve & Credit", "",
