@@ -10,6 +10,7 @@ yf.download() batches many tickers into one threaded call instead.
 import io
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -50,3 +51,108 @@ def get_sp500_universe():
             print("  Falling back to stale cache.")
             return json.loads(CACHE_FILE.read_text())
         return []
+
+
+def fetch_breadth_bars(universe):
+    """Bulk-download ~1y of daily bars for the whole universe in one
+    threaded yfinance call. Returns a yfinance multi-ticker DataFrame
+    (columns are a (ticker, field) MultiIndex), or None on failure."""
+    if not universe:
+        return None
+    tickers = [u["ticker"] for u in universe]
+    try:
+        return yf.download(tickers, period="1y", progress=False,
+                            threads=True, group_by="ticker")
+    except Exception as e:
+        print(f"  [breadth bars] download failed: {e}")
+        return None
+
+
+def compute_breadth(bars, universe, as_of_date):
+    """Compute breadth stats using the most recent trading day on or
+    before as_of_date present in bars (bars can lag by a day if run
+    before Yahoo prints the latest close). Returns a dict, or None if
+    bars is unusable."""
+    if bars is None or bars.empty or not isinstance(bars.columns, pd.MultiIndex):
+        return None
+
+    target = pd.Timestamp(as_of_date)
+    by_ticker = {u["ticker"]: u for u in universe}
+
+    advances = declines = above_50 = above_200 = 0
+    new_highs = new_lows = 0
+    counted = 0
+    movers = []  # (pct_change, ticker, company, sector)
+
+    for ticker in sorted({t for t, _ in bars.columns}):
+        try:
+            closes = bars[ticker]["Close"].dropna()
+        except Exception:
+            continue
+        closes = closes[closes.index <= target]
+        if len(closes) < 2:
+            continue
+
+        last, prev = closes.iloc[-1], closes.iloc[-2]
+        counted += 1
+        if last > prev:
+            advances += 1
+        elif last < prev:
+            declines += 1
+
+        if len(closes) >= 50 and last > closes.tail(50).mean():
+            above_50 += 1
+        if len(closes) >= 200 and last > closes.tail(200).mean():
+            above_200 += 1
+
+        wk52 = closes.tail(252)
+        if len(wk52) >= 20:
+            if last >= wk52.max():
+                new_highs += 1
+            if last <= wk52.min():
+                new_lows += 1
+
+        info = by_ticker.get(ticker, {})
+        movers.append(((last / prev - 1) * 100, ticker,
+                        info.get("company", ""), info.get("sector", "")))
+
+    if counted == 0:
+        return None
+
+    movers.sort(key=lambda m: m[0])
+    top_losers = movers[:5]
+    top_gainers = sorted(movers[-5:], key=lambda m: m[0], reverse=True)
+
+    return {
+        "advances": advances,
+        "declines": declines,
+        "pct_above_50dma": round(above_50 / counted * 100, 1),
+        "pct_above_200dma": round(above_200 / counted * 100, 1),
+        "new_52wk_highs": new_highs,
+        "new_52wk_lows": new_lows,
+        "universe_size": counted,
+        "top_gainers": top_gainers,
+        "top_losers": top_losers,
+    }
+
+
+def fetch_market_breadth(as_of_date):
+    """Top-level entry point: universe -> bulk bars -> stats. Never
+    raises — returns None on any failure so callers fall back to
+    'Data not available', same convention as every other fetcher in
+    this pipeline (see fetch_premarket_movers in generate_report.py)."""
+    print("Fetching market breadth (S&P 500, yfinance bulk)...")
+    try:
+        universe = get_sp500_universe()
+        bars = fetch_breadth_bars(universe)
+        result = compute_breadth(bars, universe, as_of_date)
+        if result:
+            print(f"  {result['universe_size']}/{len(universe)} tickers | "
+                  f"{result['advances']} adv / {result['declines']} decl | "
+                  f"{result['pct_above_50dma']}% > 50DMA")
+        else:
+            print("  No usable breadth data.")
+        return result
+    except Exception as e:
+        print(f"  [market breadth] failed: {e}")
+        return None
