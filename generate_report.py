@@ -640,6 +640,23 @@ def format_breadth_table(breadth, header="## Market Breadth"):
     ]
     return lines
 
+def format_weekly_movers_table(movers, title):
+    """movers: list of (pct_change, ticker, company, sector) tuples,
+    best-first for gainers / worst-first for losers, from
+    market_breadth.fetch_market_breadth()'s top_gainers/top_losers
+    (weekly-referenced when fetch_market_breadth() was called with
+    week_start, i.e. pct_change reflects Monday's reference close vs.
+    the as_of_date's close, not day-over-day)."""
+    lines = ["", "---", "", title, "",
+             "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
+             "|------|--------|---------|--------|----------|---------|"]
+    if not movers:
+        lines.append("| — | — | *Data not available — weekly per-company movers* | — | — | — |")
+        return lines
+    for i, (pct_chg, ticker, company, sector) in enumerate(movers, 1):
+        lines.append(f"| {i} | {ticker} | {company} | {sector} | {pct_chg:+.1f}% | — |")
+    return lines
+
 def nth_prev_trading_date(bars_dict, target_date, n):
     dates = sorted(bars_dict.keys())
     before = [d for d in dates if d <= target_date]
@@ -1475,7 +1492,8 @@ def week_bounds(any_date_str):
 
 
 def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
-                        econ_week_events, upgrades, downgrades, fg_score, fg_label):
+                        econ_week_events, upgrades, downgrades, fg_score, fg_label,
+                        breadth=None):
     monday_str, friday_str = week_bounds(week_date)
     monday = datetime.strptime(monday_str, "%Y-%m-%d")
     friday = datetime.strptime(friday_str, "%Y-%m-%d")
@@ -1623,18 +1641,7 @@ def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
         "**Volatility interpretation:**",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth — Friday Snapshot", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth, header="## Market Breadth — Friday Snapshot")
 
     hyg_fri = fri_prices.get("HYG", {})
     lqd_fri = fri_prices.get("LQD", {})
@@ -1661,27 +1668,12 @@ def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
         f"| LQD (Inv. Grade) | {fmt_price(lqd_mon.get('open'))} | {fmt_price(lqd_fri.get('close'))} | {fmt_pct(pct(lqd_fri.get('close'), lqd_mon.get('open')))} | Credit quality |",
     ]
 
-    L += ["", "---", "",
-        "## Top Gainers of the Week (S&P 500)", "",
-        "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
-        "|------|--------|---------|--------|----------|---------|",
-        "| 1 | | | | | |",
-        "| 2 | | | | | |",
-        "| 3 | | | | | |",
-        "| 4 | | | | | |",
-        "| 5 | | | | | |",
-    ]
-
-    L += ["", "---", "",
-        "## Top Losers of the Week (S&P 500)", "",
-        "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
-        "|------|--------|---------|--------|----------|---------|",
-        "| 1 | | | | | |",
-        "| 2 | | | | | |",
-        "| 3 | | | | | |",
-        "| 4 | | | | | |",
-        "| 5 | | | | | |",
-    ]
+    L += format_weekly_movers_table(
+        breadth.get("top_gainers") if breadth else None,
+        "## Top Gainers of the Week (S&P 500)")
+    L += format_weekly_movers_table(
+        breadth.get("top_losers") if breadth else None,
+        "## Top Losers of the Week (S&P 500)")
 
     L += ["", "---", "",
         "## Analyst Actions — Week in Review", "",

@@ -67,15 +67,23 @@ def fetch_breadth_bars(universe):
         return None
 
 
-def compute_breadth(bars, universe, as_of_date):
+def compute_breadth(bars, universe, as_of_date, week_start=None):
     """Compute breadth stats using the most recent trading day on or
     before as_of_date present in bars (bars can lag by a day if run
     before Yahoo prints the latest close). Returns a dict, or None if
-    bars is unusable."""
+    bars is unusable.
+
+    week_start (optional date string): when provided, the `movers` list
+    (top_gainers/top_losers) is computed as last close vs. the first
+    close on/after week_start (i.e. Monday's open-ish reference) instead
+    of the default day-over-day (last vs. prior close). Advances/
+    declines/MA%/52wk-high-low counts are always day-over-day and are
+    unaffected by week_start."""
     if bars is None or bars.empty or not isinstance(bars.columns, pd.MultiIndex):
         return None
 
     target = pd.Timestamp(as_of_date)
+    monday = pd.Timestamp(week_start) if week_start else None
     by_ticker = {u["ticker"]: u for u in universe}
 
     advances = declines = above_50 = above_200 = 0
@@ -111,8 +119,15 @@ def compute_breadth(bars, universe, as_of_date):
             if last <= wk52.min():
                 new_lows += 1
 
+        mover_pct = (last / prev - 1) * 100
+        if monday is not None:
+            week_ref_series = closes[closes.index >= monday]
+            if not week_ref_series.empty:
+                week_ref = week_ref_series.iloc[0]
+                mover_pct = (last / week_ref - 1) * 100
+
         info = by_ticker.get(ticker, {})
-        movers.append(((last / prev - 1) * 100, ticker,
+        movers.append((mover_pct, ticker,
                         info.get("company", ""), info.get("sector", "")))
 
     if counted == 0:
@@ -135,16 +150,20 @@ def compute_breadth(bars, universe, as_of_date):
     }
 
 
-def fetch_market_breadth(as_of_date):
+def fetch_market_breadth(as_of_date, week_start=None):
     """Top-level entry point: universe -> bulk bars -> stats. Never
     raises — returns None on any failure so callers fall back to
     'Data not available', same convention as every other fetcher in
-    this pipeline (see fetch_premarket_movers in generate_report.py)."""
+    this pipeline (see fetch_premarket_movers in generate_report.py).
+
+    week_start (optional): passed through to compute_breadth() so the
+    weekly report path can rank movers vs. Monday's reference close
+    instead of the default day-over-day comparison."""
     print("Fetching market breadth (S&P 500, yfinance bulk)...")
     try:
         universe = get_sp500_universe()
         bars = fetch_breadth_bars(universe)
-        result = compute_breadth(bars, universe, as_of_date)
+        result = compute_breadth(bars, universe, as_of_date, week_start=week_start)
         if result:
             print(f"  {result['universe_size']}/{len(universe)} tickers | "
                   f"{result['advances']} adv / {result['declines']} decl | "
