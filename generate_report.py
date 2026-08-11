@@ -33,6 +33,8 @@ from pathlib import Path
 import requests
 import yfinance as yf
 
+import market_breadth
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -609,6 +611,55 @@ def fmt_price(val, decimals=2):
         return ""
     return f"{val:,.{decimals}f}"
 
+def format_breadth_table(breadth, header="## Market Breadth"):
+    """Shared by Open, Close, and Weekly builders. breadth is the dict
+    from market_breadth.fetch_market_breadth(), or None. Labeled
+    'S&P 500 ...' throughout — NOT 'NYSE'/'Nasdaq', since the universe
+    is the S&P 500 constituent list, which spans both exchanges."""
+    lines = ["", "---", "", header, "",
+             "| Indicator | Value | Signal |",
+             "|-----------|-------|--------|"]
+    if not breadth:
+        lines += [
+            "| S&P 500 Advance / Decline | — / — | *Data not available* |",
+            "| S&P 500 Above 50-Day MA | — % | *Data not available* |",
+            "| S&P 500 Above 200-Day MA | — % | *Data not available* |",
+            "| S&P 500 New 52-Week Highs | — | *Data not available* |",
+            "| S&P 500 New 52-Week Lows | — | *Data not available* |",
+        ]
+        return lines
+    adv, decl = breadth["advances"], breadth["declines"]
+    signal = "Breadth bullish" if adv > decl else ("Breadth bearish" if decl > adv else "Breadth flat")
+    ma50, ma200 = breadth["pct_above_50dma"], breadth["pct_above_200dma"]
+    highs, lows = breadth["new_52wk_highs"], breadth["new_52wk_lows"]
+    highs_signal = "Expanding leadership" if highs > lows else ("Narrow" if lows > highs else "Balanced")
+    lows_signal = "Elevated" if lows > highs else ("Contained" if highs > lows else "Balanced")
+    lines += [
+        f"| S&P 500 Advance / Decline | {adv} / {decl} | {signal} |",
+        f"| S&P 500 Above 50-Day MA | {ma50}% | {'Healthy' if ma50 > 60 else 'Weak'} (> 60% healthy) |",
+        f"| S&P 500 Above 200-Day MA | {ma200}% | {'Bull market' if ma200 > 70 else 'Below bull threshold'} (> 70%) |",
+        f"| S&P 500 New 52-Week Highs | {highs} | {highs_signal} |",
+        f"| S&P 500 New 52-Week Lows | {lows} | {lows_signal} |",
+    ]
+    return lines
+
+def format_weekly_movers_table(movers, title):
+    """movers: list of (pct_change, ticker, company, sector) tuples,
+    best-first for gainers / worst-first for losers, from
+    market_breadth.fetch_market_breadth()'s top_gainers/top_losers
+    (weekly-referenced when fetch_market_breadth() was called with
+    week_start, i.e. pct_change reflects the prior Friday's close vs.
+    the as_of_date's close, not day-over-day)."""
+    lines = ["", "---", "", title, "",
+             "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
+             "|------|--------|---------|--------|----------|---------|"]
+    if not movers:
+        lines.append("| — | — | *Data not available — weekly per-company movers* | — | — | — |")
+        return lines
+    for i, (pct_chg, ticker, company, sector) in enumerate(movers, 1):
+        lines.append(f"| {i} | {ticker} | {company} | {sector} | {pct_chg:+.1f}% | — |")
+    return lines
+
 def nth_prev_trading_date(bars_dict, target_date, n):
     dates = sorted(bars_dict.keys())
     before = [d for d in dates if d <= target_date]
@@ -1022,7 +1073,7 @@ def market_holiday(date_str):
 
 def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
                       upgrades, downgrades, econ_events, fg_score, fg_label,
-                      earnings=None):
+                      earnings=None, breadth=None):
     fdate  = datetime.strptime(report_date, "%Y-%m-%d").strftime("%m-%d-%y")
     dstr   = datetime.strptime(report_date, "%Y-%m-%d").strftime("%B %-d, %Y")
     dow    = datetime.strptime(report_date, "%Y-%m-%d").strftime("%A")
@@ -1118,18 +1169,7 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
         "| Total Put/Call Ratio | | |",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | Breadth bullish / bearish |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth)
 
     L += ["", "---", "",
         "## Yield Curve & Credit", "",
@@ -1250,7 +1290,7 @@ def build_open_report(report_date, prices, macro, pre_gainers, pre_losers,
 
 def build_close_report(report_date, prices, macro, gainers, losers,
                        ah_gainers, ah_losers, upgrades, downgrades, econ_events,
-                       fg_score, fg_label):
+                       fg_score, fg_label, breadth=None):
     fdate  = datetime.strptime(report_date, "%Y-%m-%d").strftime("%m-%d-%y")
     dstr   = datetime.strptime(report_date, "%Y-%m-%d").strftime("%B %-d, %Y")
     dow    = datetime.strptime(report_date, "%Y-%m-%d").strftime("%A")
@@ -1337,18 +1377,7 @@ def build_close_report(report_date, prices, macro, gainers, losers,
         "| Total Put/Call Ratio (close) | | | |",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | Breadth bullish / bearish |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth)
 
     L += ["", "---", "",
         "## Yield Curve & Credit", "",
@@ -1466,7 +1495,8 @@ def week_bounds(any_date_str):
 
 
 def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
-                        econ_week_events, upgrades, downgrades, fg_score, fg_label):
+                        econ_week_events, upgrades, downgrades, fg_score, fg_label,
+                        breadth=None):
     monday_str, friday_str = week_bounds(week_date)
     monday = datetime.strptime(monday_str, "%Y-%m-%d")
     friday = datetime.strptime(friday_str, "%Y-%m-%d")
@@ -1614,18 +1644,7 @@ def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
         "**Volatility interpretation:**",
     ]
 
-    L += ["", "---", "",
-        "## Market Breadth — Friday Snapshot", "",
-        "| Indicator | Value | Signal |",
-        "|-----------|-------|--------|",
-        "| NYSE Advance / Decline | / | |",
-        "| S&P 500 Above 50-Day MA | % | Healthy > 60% |",
-        "| S&P 500 Above 200-Day MA | % | Bull market > 70% |",
-        "| NYSE New 52-Week Highs | | |",
-        "| NYSE New 52-Week Lows | | |",
-        "| Nasdaq New 52-Week Highs | | |",
-        "| Nasdaq New 52-Week Lows | | |",
-    ]
+    L += format_breadth_table(breadth, header="## Market Breadth — Friday Snapshot")
 
     hyg_fri = fri_prices.get("HYG", {})
     lqd_fri = fri_prices.get("LQD", {})
@@ -1652,27 +1671,12 @@ def build_weekly_report(week_date, raw_bars, macro_mon, macro_fri,
         f"| LQD (Inv. Grade) | {fmt_price(lqd_mon.get('open'))} | {fmt_price(lqd_fri.get('close'))} | {fmt_pct(pct(lqd_fri.get('close'), lqd_mon.get('open')))} | Credit quality |",
     ]
 
-    L += ["", "---", "",
-        "## Top Gainers of the Week (S&P 500)", "",
-        "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
-        "|------|--------|---------|--------|----------|---------|",
-        "| 1 | | | | | |",
-        "| 2 | | | | | |",
-        "| 3 | | | | | |",
-        "| 4 | | | | | |",
-        "| 5 | | | | | |",
-    ]
-
-    L += ["", "---", "",
-        "## Top Losers of the Week (S&P 500)", "",
-        "| Rank | Ticker | Company | Sector | Weekly % | Catalyst |",
-        "|------|--------|---------|--------|----------|---------|",
-        "| 1 | | | | | |",
-        "| 2 | | | | | |",
-        "| 3 | | | | | |",
-        "| 4 | | | | | |",
-        "| 5 | | | | | |",
-    ]
+    L += format_weekly_movers_table(
+        breadth.get("top_gainers") if breadth else None,
+        "## Top Gainers of the Week (S&P 500)")
+    L += format_weekly_movers_table(
+        breadth.get("top_losers") if breadth else None,
+        "## Top Losers of the Week (S&P 500)")
 
     L += ["", "---", "",
         "## Analyst Actions — Week in Review", "",
@@ -1876,12 +1880,14 @@ def main():
             macro   = fetch_fred(report_date)
             upgr, downgr = fetch_analyst_actions(report_date)
             econ    = fetch_economic_calendar(report_date)
+            breadth = market_breadth.fetch_market_breadth(report_date)
 
             if report_type in ("open", "both", "all"):
                 earn = fetch_earnings_calendar(report_date)
                 content = build_open_report(report_date, prices, macro,
                                             pre_g, pre_l, upgr, downgr, econ,
-                                            fg_score, fg_label, earnings=earn)
+                                            fg_score, fg_label, earnings=earn,
+                                            breadth=breadth)
                 out = REPORTS_DIR / "Open" / f"Open_{fdate}.md"
                 out.write_text(content)
                 print(f"  ✓ Open  → {out}")
@@ -1889,7 +1895,8 @@ def main():
             if report_type in ("close", "both", "all"):
                 content = build_close_report(report_date, prices, macro,
                                              gainers, losers, ah_g, ah_l,
-                                             upgr, downgr, econ, fg_score, fg_label)
+                                             upgr, downgr, econ, fg_score, fg_label,
+                                             breadth=breadth)
                 out = REPORTS_DIR / "Close" / f"Close_{fdate}.md"
                 out.write_text(content)
                 print(f"  ✓ Close → {out}")
@@ -1922,9 +1929,11 @@ def main():
                     friday_str
                 )
 
+            week_breadth = market_breadth.fetch_market_breadth(friday_str, week_start=monday_str)
             content = build_weekly_report(
                 monday_str, raw_bars, macro_mon, macro_fri,
-                econ_week, upgr, downgr, fg_score, fg_label
+                econ_week, upgr, downgr, fg_score, fg_label,
+                breadth=week_breadth
             )
             fdate = datetime.strptime(monday_str, "%Y-%m-%d").strftime("%m-%d-%y")
             out = REPORTS_DIR / "Weekly" / f"Weekly_{fdate}.md"

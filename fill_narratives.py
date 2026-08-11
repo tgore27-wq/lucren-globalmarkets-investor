@@ -125,7 +125,7 @@ C. Economic data: Do not fabricate specific economic release numbers
    (CPI prints, payroll counts, PMI readings, etc.) unless they are
    already present in the report.
 D. Per-company tables with ZERO real data: some report sections (e.g.
-   Weekly/Monthly "Top Gainers of the Week", "Analyst Actions — Week in
+   Monthly "Month's Top Gainers/Losers", "Analyst Actions — Week in
    Review") are tables where EVERY row starts completely blank because no
    per-company data source is connected for that section — this is
    different from case A, where the table already has real rows and just
@@ -138,7 +138,11 @@ D. Per-company tables with ZERO real data: some report sections (e.g.
    it at that. Do not reference these invented companies/tickers anywhere
    else in the report (narrative sections, opportunities, risks) either —
    an invented per-company fact doesn't become real by being reused in
-   prose.
+   prose. NOTE: the Weekly report's "Top Gainers/Losers of the Week"
+   tables are EXCLUDED from this rule — they are now pre-filled with real
+   data (see rule 12) and must be left exactly as written, not replaced
+   with a "Data not available" row. Rule D still governs the Monthly
+   report's "Month's Top Gainers/Losers" table, which remains blank.
 4. Market Tone choices (pick one): Bullish | Cautiously Bullish | Neutral |
    Cautious | Bearish
 5. TL;DR: 4 concise bullets summarising the session's most important events.
@@ -154,13 +158,18 @@ D. Per-company tables with ZERO real data: some report sections (e.g.
     Actions (CRITICAL rule A): never invent Rev Est or Implied Move figures
     to replace the "—" placeholders — those are genuinely unavailable from
     the free data source and must stay "—".
-12. Fed Watch: derive from current rate (shown in report) and recent
+12. Market Breadth and Top Gainers/Losers of the Week: also pre-filled
+    with real data (S&P 500, computed from yfinance). Leave every row
+    exactly as written — same rule as Earnings Calendar and Analyst
+    Actions (CRITICAL rule A): never invent a Catalyst to replace a "—"
+    placeholder in the weekly movers tables.
+13. Fed Watch: derive from current rate (shown in report) and recent
     yield-curve data.
-13. After-Hours / Pre-Market Movers: if Catalyst column is blank, infer
+14. After-Hours / Pre-Market Movers: if Catalyst column is blank, infer
     from the biggest daily movers in the sector ETF table.
-14. Weekly sector rotation narrative: explain which sectors led/lagged
+15. Weekly sector rotation narrative: explain which sectors led/lagged
     and why, based on weekly % columns.
-15. Return the COMPLETE report with every section filled. Output ONLY
+16. Return the COMPLETE report with every section filled. Output ONLY
     the report markdown — no commentary before or after.
 """
 
